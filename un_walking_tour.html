@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UN Mission Walking Tour Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@300;400;500&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --bg: #0B0F1A;
+    --surface: #111827;
+    --card: #161D2E;
+    --border: rgba(99,179,237,0.15);
+    --accent: #63B3ED;
+    --gold: #F6C90E;
+    --green: #48BB78;
+    --red: #FC8181;
+    --text: #CBD5E0;
+    --text-dim: #4A5568;
+    --text-bright: #EDF2F7;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Barlow', sans-serif;
+    --serif: 'Playfair Display', serif;
+    --visited-bg: rgba(72,187,120,0.08);
+    --visited-border: rgba(72,187,120,0.3);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: 0;
+    background-image: linear-gradient(rgba(99,179,237,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(99,179,237,0.03) 1px, transparent 1px);
+    background-size: 32px 32px; pointer-events: none;
+  }
+
+  /* ── LAYOUT ── */
+  .app { position: relative; z-index: 1; display: grid; grid-template-columns: 420px 1fr; grid-template-rows: auto 1fr; min-height: 100vh; }
+
+  /* ── HEADER ── */
+  header {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display: flex; align-items: stretch; gap: 0;
+    background: var(--surface);
+    position: sticky; top: 0; z-index: 500;
+  }
+  .header-title { padding: 14px 24px 14px 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+  .header-eyebrow { font-family: var(--mono); font-size: 9px; letter-spacing: 3px; color: var(--accent); text-transform: uppercase; }
+  h1 { font-family: var(--serif); font-size: 19px; font-weight: 400; color: var(--text-bright); line-height: 1.1; }
+  h1 em { color: var(--gold); font-style: italic; }
+
+  .header-stats { display: flex; align-items: center; gap: 0; }
+  .hstat { padding: 0 18px; border-left: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .hstat-val { font-family: var(--mono); font-size: 16px; font-weight: 500; color: var(--accent); }
+  .hstat-label { font-family: var(--mono); font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); }
+  .hstat-val.green { color: var(--green); }
+
+  .header-controls { display: flex; align-items: center; gap: 8px; padding: 0 0 0 18px; border-left: 1px solid var(--border); margin-left: auto; }
+  select, button { font-family: var(--mono); font-size: 11px; border-radius: 3px; outline: none; cursor: pointer; }
+  select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; }
+  select option { background: var(--card); }
+  .btn-gen { background: var(--accent); color: #0B0F1A; border: none; padding: 8px 16px; letter-spacing: 1px; text-transform: uppercase; transition: background 0.15s; }
+  .btn-gen:hover { background: #90CDF4; }
+  .btn-gen:disabled { background: var(--text-dim); cursor: not-allowed; }
+  .btn-loc { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 7px 12px; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+  .btn-loc:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-loc.active { border-color: var(--green); color: var(--green); }
+  .btn-sec { background: transparent; border: 1px solid var(--border); color: var(--text-dim); padding: 7px 14px; transition: all 0.15s; }
+  .btn-sec:hover { border-color: var(--border); color: var(--text); }
+
+  /* ── LEFT PANEL ── */
+  .panel {
+    grid-column: 1; grid-row: 2;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    height: calc(100vh - 57px); /* subtract header */
+    position: sticky; top: 57px;
+    overflow: hidden;
+  }
+
+  #status {
+    font-family: var(--mono); font-size: 10px; color: var(--accent);
+    padding: 8px 16px; border-bottom: 1px solid var(--border);
+    min-height: 32px; display: flex; align-items: center; gap: 6px;
+    background: var(--surface); flex-shrink: 0;
+  }
+  .pulse { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .day-tabs {
+    display: flex; gap: 0; overflow-x: auto; scrollbar-width: none;
+    border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
+  }
+  .day-tabs::-webkit-scrollbar { display: none; }
+  .day-tab {
+    padding: 8px 14px; font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--text-dim); cursor: pointer;
+    border: none; background: transparent; border-bottom: 2px solid transparent;
+    transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .day-tab:hover { color: var(--text); }
+  .day-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .mission-list { flex: 1; overflow-y: auto; padding: 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .mission-list::-webkit-scrollbar { width: 4px; }
+  .mission-list::-webkit-scrollbar-track { background: transparent; }
+  .mission-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Day summary */
+  .day-summary {
+    padding: 10px 14px; background: rgba(99,179,237,0.04);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+    display: flex; gap: 14px; flex-wrap: wrap;
+  }
+  .day-summary span { color: var(--text); }
+
+  /* Mission card */
+  .mission-row {
+    display: grid; grid-template-columns: 40px 1fr auto;
+    border-bottom: 1px solid rgba(99,179,237,0.06);
+    transition: background 0.15s; cursor: pointer;
+    animation: slideIn 0.25s ease both;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:none; } }
+  .mission-row:hover { background: rgba(99,179,237,0.05); }
+  .mission-row.visited { background: var(--visited-bg); border-left: 2px solid var(--green); }
+  .mission-row.active-row { background: rgba(246,201,14,0.07); border-left: 2px solid var(--gold); }
+
+  .row-num {
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+    border-right: 1px solid rgba(99,179,237,0.06);
+    flex-shrink: 0;
+  }
+  .mission-row.visited .row-num { color: var(--green); }
+
+  .row-body { padding: 9px 12px; min-width: 0; }
+  .row-country { font-size: 13px; font-weight: 500; color: var(--text-bright); display: flex; align-items: center; gap: 7px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mission-row.visited .row-country { color: var(--green); text-decoration: line-through; text-decoration-color: rgba(72,187,120,0.4); }
+  .row-addr { font-family: var(--mono); font-size: 10px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .row-right { padding: 9px 10px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 4px; flex-shrink: 0; }
+  .walk-badge { font-family: var(--mono); font-size: 9px; padding: 2px 7px; border-radius: 8px; white-space: nowrap; }
+  .walk-near { background: rgba(72,187,120,0.12); color: var(--green); }
+  .walk-mid  { background: rgba(246,201,14,0.12); color: var(--gold); }
+  .walk-far  { background: rgba(252,129,129,0.12); color: var(--red); }
+
+  /* Checkbox */
+  .visit-check {
+    width: 14px; height: 14px; border: 1px solid var(--text-dim); border-radius: 2px;
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+    background: transparent; position: relative; transition: all 0.15s; flex-shrink: 0;
+  }
+  .visit-check:checked { background: var(--green); border-color: var(--green); }
+  .visit-check:checked::after { content: '✓'; position: absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#0B0F1A; font-size:9px; font-weight:700; }
+
+  /* Walk connector */
+  .walk-sep {
+    display: flex; align-items: center; gap: 10px;
+    padding: 3px 0 3px 40px; font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+    border-bottom: 1px solid rgba(99,179,237,0.04);
+  }
+  .walk-sep .line { flex: 1; border-top: 1px dashed rgba(99,179,237,0.12); }
+
+  /* Empty */
+  .empty { text-align: center; padding: 60px 24px; }
+  .empty h3 { font-family: var(--serif); font-size: 20px; color: var(--text-dim); font-weight: 400; margin-bottom: 8px; font-style: italic; }
+  .empty p { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 1px; }
+
+  /* ── MAP ── */
+  .map-panel { grid-column: 2; grid-row: 2; position: sticky; top: 57px; height: calc(100vh - 57px); }
+  #map { width: 100%; height: 100%; }
+
+  /* Leaflet overrides */
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.75) saturate(0.6); }
+  .leaflet-control-zoom a { background: var(--card) !important; color: var(--text) !important; border-color: var(--border) !important; }
+  .leaflet-popup-content-wrapper { background: var(--card); color: var(--text-bright); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+  .leaflet-popup-tip { background: var(--card); }
+  .leaflet-popup-content { margin: 10px 14px; font-family: var(--sans); }
+  .popup-flag { font-size: 22px; margin-bottom: 4px; }
+  .popup-name { font-weight: 600; font-size: 14px; color: var(--text-bright); margin-bottom: 2px; }
+  .popup-addr { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-bottom: 8px; }
+  .popup-btn { background: var(--accent); color: #0B0F1A; border: none; border-radius: 3px; padding: 5px 12px; font-family: var(--mono); font-size: 10px; cursor: pointer; width: 100%; letter-spacing: 1px; text-transform: uppercase; transition: background 0.15s; }
+  .popup-btn:hover { background: #90CDF4; }
+  .popup-btn.visited { background: var(--green); }
+  .popup-btn.visited:hover { background: #68D391; }
+
+  /* Location marker pulse */
+  .loc-pulse { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; position: relative; }
+  .loc-pulse::after { content:''; position:absolute; inset:-4px; border-radius:50%; border:2px solid var(--accent); animation: locPulse 2s infinite; opacity:0.6; }
+  @keyframes locPulse { 0%{transform:scale(1);opacity:0.6} 100%{transform:scale(2.2);opacity:0} }
+
+  /* Progress bar at bottom of panel */
+  .progress-bar {
+    flex-shrink: 0; padding: 10px 14px; border-top: 1px solid var(--border);
+    background: var(--surface); display: flex; align-items: center; gap: 10px;
+  }
+  .progress-track { flex: 1; height: 4px; background: var(--card); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.4s ease; }
+  .progress-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+  .progress-label span { color: var(--green); }
+
+  /* Responsive */
+  @media (max-width: 800px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+    .panel { grid-column: 1; grid-row: 3; position: relative; top: 0; height: 50vh; }
+    .map-panel { grid-column: 1; grid-row: 2; position: relative; top: 0; height: 40vh; }
+    .header-stats { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-title">
+      <div class="header-eyebrow">Diplomatic Walking Tour</div>
+      <h1>All <em>195</em> UN Missions — NYC</h1>
+    </div>
+    <div class="header-stats">
+      <div class="hstat"><div class="hstat-val" id="s-days">—</div><div class="hstat-label">Days</div></div>
+      <div class="hstat"><div class="hstat-val" id="s-total">—</div><div class="hstat-label">Total Miles</div></div>
+      <div class="hstat"><div class="hstat-val green" id="s-visited">0</div><div class="hstat-label">Visited</div></div>
+      <div class="hstat"><div class="hstat-val" id="s-remain">195</div><div class="hstat-label">Remaining</div></div>
+    </div>
+    <div class="header-controls">
+      <select id="perDay">
+        <option value="5">5/day</option>
+        <option value="10">10/day</option>
+        <option value="25" selected>25/day</option>
+        <option value="50">50/day</option>
+        <option value="100">100/day</option>
+        <option value="200">All in one day</option>
+      </select>
+      <select id="strategy">
+        <option value="tsp">TSP + 2-opt</option>
+        <option value="geo">Geographic</option>
+        <option value="street">Street Sweep</option>
+      </select>
+      <button class="btn-loc" id="locBtn" onclick="toggleLocation()">
+        <span>◎</span><span id="locLabel">My Location</span>
+      </button>
+      <button class="btn-gen" id="genBtn" onclick="generate()">Generate</button>
+      <button class="btn-sec" onclick="clearVisited()">Clear Visited</button>
+      <button class="btn-sec" onclick="exportTour()">Export</button>
+    </div>
+  </header>
+
+  <!-- LEFT PANEL -->
+  <div class="panel">
+    <div id="status"><span style="color:var(--text-dim)">Configure and generate your tour.</span></div>
+    <div class="day-tabs" id="dayTabs"></div>
+    <div class="mission-list" id="missionList">
+      <div class="empty">
+        <h3>No plan yet.</h3>
+        <p>Hit generate to build your walking tour.</p>
+      </div>
+    </div>
+    <div class="progress-bar" id="progressBar" style="display:none">
+      <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      <div class="progress-label"><span id="progressText">0</span> / 195 visited</div>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div class="map-panel">
+    <div id="map"></div>
+  </div>
+
+</div>
+
+<script>
+// ── MISSION DATA ──
+const MISSIONS = [
+  {name:"Afghanistan",flag:"🇦🇫",lat:40.749572,lng:-73.974622,addr:"633 Third Ave"},
+  {name:"Albania",flag:"🇦🇱",lat:40.772687,lng:-73.954267,addr:"320 E 79th St"},
+  {name:"Algeria",flag:"🇩🇿",lat:40.752911,lng:-73.968356,addr:"326 E 48th St"},
+  {name:"Andorra",flag:"🇦🇩",lat:40.750559,lng:-73.969586,addr:"Two UN Plaza"},
+  {name:"Angola",flag:"🇦🇴",lat:40.750741,lng:-73.971094,addr:"820 Second Ave"},
+  {name:"Antigua & Barbuda",flag:"🇦🇬",lat:40.752839,lng:-73.968999,addr:"305 E 47th St"},
+  {name:"Argentina",flag:"🇦🇷",lat:40.750470,lng:-73.969122,addr:"One UN Plaza"},
+  {name:"Armenia",flag:"🇦🇲",lat:40.748095,lng:-73.979272,addr:"119 E 36th St"},
+  {name:"Australia",flag:"🇦🇺",lat:40.750758,lng:-73.975526,addr:"150 E 42nd St"},
+  {name:"Austria",flag:"🇦🇹",lat:40.749572,lng:-73.974670,addr:"633 Third Ave"},
+  {name:"Azerbaijan",flag:"🇦🇿",lat:40.749625,lng:-73.974670,addr:"633 Third Ave"},
+  {name:"Bahamas",flag:"🇧🇸",lat:40.752892,lng:-73.971069,addr:"231 E 46th St"},
+  {name:"Bahrain",flag:"🇧🇭",lat:40.752492,lng:-73.969920,addr:"866 Second Ave"},
+  {name:"Bangladesh",flag:"🇧🇩",lat:40.750900,lng:-73.971111,addr:"820 Second Ave"},
+  {name:"Barbados",flag:"🇧🇧",lat:40.750874,lng:-73.971035,addr:"820 Second Ave"},
+  {name:"Belarus",flag:"🇧🇾",lat:40.766661,lng:-73.963767,addr:"136 E 67th St"},
+  {name:"Belgium",flag:"🇧🇪",lat:40.753490,lng:-73.970055,addr:"885 Second Ave"},
+  {name:"Belize",flag:"🇧🇿",lat:40.750837,lng:-73.973971,addr:"675 Third Ave"},
+  {name:"Benin",flag:"🇧🇯",lat:40.748968,lng:-73.978297,addr:"125 E 38th St"},
+  {name:"Bhutan",flag:"🇧🇹",lat:40.749702,lng:-73.969539,addr:"343 E 43rd St"},
+  {name:"Bolivia",flag:"🇧🇴",lat:40.750430,lng:-73.972078,addr:"801 Second Ave"},
+  {name:"Bosnia & Herzegovina",flag:"🇧🇦",lat:40.751244,lng:-73.972660,addr:"420 Lexington Ave"},
+  {name:"Botswana",flag:"🇧🇼",lat:40.753459,lng:-73.973412,addr:"154 E 46th St"},
+  {name:"Brazil",flag:"🇧🇷",lat:40.753481,lng:-73.972045,addr:"747 Third Ave"},
+  {name:"Brunei Darussalam",flag:"🇧🇳",lat:40.749980,lng:-73.969389,addr:"771 UN Plaza"},
+  {name:"Bulgaria",flag:"🇧🇬",lat:40.780015,lng:-73.960363,addr:"11 E 84th St"},
+  {name:"Burkina Faso",flag:"🇧🇫",lat:40.749734,lng:-73.974716,addr:"633 Third Ave"},
+  {name:"Burundi",flag:"🇧🇮",lat:40.750845,lng:-73.969201,addr:"336 E 45th St"},
+  {name:"Cabo Verde",flag:"🇨🇻",lat:40.769757,lng:-73.966056,addr:"27 E 69th St"},
+  {name:"Cambodia",flag:"🇰🇭",lat:40.759681,lng:-73.963602,addr:"327 E 58th St"},
+  {name:"Cameroon",flag:"🇨🇲",lat:40.772465,lng:-73.965553,addr:"22 E 73rd St"},
+  {name:"Canada",flag:"🇨🇦",lat:40.753843,lng:-73.974913,addr:"466 Lexington Ave"},
+  {name:"Central African Republic",flag:"🇨🇫",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Chad",flag:"🇹🇩",lat:40.748019,lng:-73.979082,addr:"129 E 36th St"},
+  {name:"Chile",flag:"🇨🇱",lat:40.753490,lng:-73.970055,addr:"885 Second Ave"},
+  {name:"China",flag:"🇨🇳",lat:40.744512,lng:-73.973505,addr:"350 E 35th St"},
+  {name:"Colombia",flag:"🇨🇴",lat:40.760505,lng:-73.968799,addr:"140 E 57th St"},
+  {name:"Comoros",flag:"🇰🇲",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Congo",flag:"🇨🇬",lat:40.767425,lng:-73.969466,addr:"14 E 65th St"},
+  {name:"Costa Rica",flag:"🇨🇷",lat:40.751265,lng:-73.973154,addr:"211 E 43rd St"},
+  {name:"Côte d'Ivoire",flag:"🇨🇮",lat:40.750076,lng:-73.971652,addr:"800 Second Ave"},
+  {name:"Croatia",flag:"🇭🇷",lat:40.750749,lng:-73.971055,addr:"820 Second Ave"},
+  {name:"Cuba",flag:"🇨🇺",lat:40.749012,lng:-73.977504,addr:"315 Lexington Ave"},
+  {name:"Cyprus",flag:"🇨🇾",lat:40.750306,lng:-73.974354,addr:"655 Third Ave"},
+  {name:"Czech Republic",flag:"🇨🇿",lat:40.779010,lng:-73.959886,addr:"1109 Madison Ave"},
+  {name:"DR Korea",flag:"🇰🇵",lat:40.750900,lng:-73.971111,addr:"820 Second Ave"},
+  {name:"DR Congo",flag:"🇨🇩",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Denmark",flag:"🇩🇰",lat:40.751428,lng:-73.974553,addr:"666 Third Ave"},
+  {name:"Djibouti",flag:"🇩🇯",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Dominica",flag:"🇩🇲",lat:40.751545,lng:-73.973589,addr:"685 Third Ave"},
+  {name:"Dominican Republic",flag:"🇩🇴",lat:40.752251,lng:-73.974520,addr:"144 E 44th St"},
+  {name:"Ecuador",flag:"🇪🇨",lat:40.752724,lng:-73.966422,addr:"866 UN Plaza"},
+  {name:"Egypt",flag:"🇪🇬",lat:40.750706,lng:-73.970852,addr:"304 E 44th St"},
+  {name:"El Salvador",flag:"🇸🇻",lat:40.748838,lng:-73.980598,addr:"46 Park Ave"},
+  {name:"Equatorial Guinea",flag:"🇬🇶",lat:40.750076,lng:-73.971652,addr:"800 Second Ave"},
+  {name:"Eritrea",flag:"🇪🇷",lat:40.750058,lng:-73.971653,addr:"800 Second Ave"},
+  {name:"Estonia",flag:"🇪🇪",lat:40.752845,lng:-73.969145,addr:"305 E 47th St"},
+  {name:"Eswatini",flag:"🇸🇿",lat:40.753772,lng:-73.965340,addr:"408 E 50th St"},
+  {name:"Ethiopia",flag:"🇪🇹",lat:40.752471,lng:-73.969927,addr:"866 Second Ave"},
+  {name:"Fiji",flag:"🇫🇯",lat:40.750415,lng:-73.972139,addr:"801 Second Ave"},
+  {name:"Finland",flag:"🇫🇮",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"France",flag:"🇫🇷",lat:40.753437,lng:-73.970009,addr:"245 E 47th St"},
+  {name:"Gabon",flag:"🇬🇦",lat:40.752224,lng:-73.980512,addr:"18 E 41st St"},
+  {name:"Gambia",flag:"🇬🇲",lat:40.750920,lng:-73.969187,addr:"336 E 45th St"},
+  {name:"Georgia",flag:"🇬🇪",lat:40.750426,lng:-73.969137,addr:"One UN Plaza"},
+  {name:"Germany",flag:"🇩🇪",lat:40.753218,lng:-73.966984,addr:"871 UN Plaza"},
+  {name:"Ghana",flag:"🇬🇭",lat:40.756269,lng:-73.977251,addr:"19 E 47th St"},
+  {name:"Greece",flag:"🇬🇷",lat:40.752513,lng:-73.969919,addr:"866 Second Ave"},
+  {name:"Grenada",flag:"🇬🇩",lat:40.751545,lng:-73.973609,addr:"685 Third Ave"},
+  {name:"Guatemala",flag:"🇬🇹",lat:40.749132,lng:-73.979460,addr:"57 Park Ave"},
+  {name:"Guinea",flag:"🇬🇳",lat:40.749094,lng:-73.976957,addr:"140 E 39th St"},
+  {name:"Guinea-Bissau",flag:"🇬🇼",lat:40.750920,lng:-73.969187,addr:"336 E 45th St"},
+  {name:"Guyana",flag:"🇬🇾",lat:40.750399,lng:-73.972162,addr:"801 Second Ave"},
+  {name:"Haiti",flag:"🇭🇹",lat:40.750786,lng:-73.971900,addr:"815 Second Ave"},
+  {name:"Honduras",flag:"🇭🇳",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Hungary",flag:"🇭🇺",lat:40.756787,lng:-73.968611,addr:"227 E 52nd St"},
+  {name:"Iceland",flag:"🇮🇸",lat:40.752892,lng:-73.972566,addr:"733 Third Ave"},
+  {name:"India",flag:"🇮🇳",lat:40.750894,lng:-73.972068,addr:"235 E 43rd St"},
+  {name:"Indonesia",flag:"🇮🇩",lat:40.746905,lng:-73.972523,addr:"325 E 38th St"},
+  {name:"Iran",flag:"🇮🇷",lat:40.749751,lng:-73.975608,addr:"622 Third Ave"},
+  {name:"Iraq",flag:"🇮🇶",lat:40.776358,lng:-73.962893,addr:"14 E 79th St"},
+  {name:"Ireland",flag:"🇮🇪",lat:40.753575,lng:-73.970088,addr:"885 Second Ave"},
+  {name:"Israel",flag:"🇮🇱",lat:40.750159,lng:-73.971701,addr:"800 Second Ave"},
+  {name:"Italy",flag:"🇮🇹",lat:40.753450,lng:-73.969327,addr:"885 Second Ave"},
+  {name:"Jamaica",flag:"🇯🇲",lat:40.754253,lng:-73.971426,addr:"767 Third Ave"},
+  {name:"Japan",flag:"🇯🇵",lat:40.749007,lng:-73.975151,addr:"605 Third Ave"},
+  {name:"Jordan",flag:"🇯🇴",lat:40.752513,lng:-73.969919,addr:"866 Second Ave"},
+  {name:"Kazakhstan",flag:"🇰🇿",lat:40.752907,lng:-73.969072,addr:"305 E 47th St"},
+  {name:"Kenya",flag:"🇰🇪",lat:40.752584,lng:-73.966389,addr:"866 UN Plaza"},
+  {name:"Kiribati",flag:"🇰🇮",lat:40.750076,lng:-73.971652,addr:"800 Second Ave"},
+  {name:"Kuwait",flag:"🇰🇼",lat:40.750820,lng:-73.970035,addr:"321 E 44th St"},
+  {name:"Kyrgyzstan",flag:"🇰🇬",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Lao PDR",flag:"🇱🇦",lat:40.755352,lng:-73.967218,addr:"317 E 51st St"},
+  {name:"Latvia",flag:"🇱🇻",lat:40.754496,lng:-73.967130,addr:"333 E 50th St"},
+  {name:"Lebanon",flag:"🇱🇧",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Lesotho",flag:"🇱🇸",lat:40.748510,lng:-73.975314,addr:"210 E 39th St"},
+  {name:"Liberia",flag:"🇱🇷",lat:40.751908,lng:-73.971823,addr:"228 E 45th St"},
+  {name:"Libya",flag:"🇱🇾",lat:40.753481,lng:-73.968632,addr:"309 E 48th St"},
+  {name:"Liechtenstein",flag:"🇱🇮",lat:40.749692,lng:-73.974830,addr:"633 Third Ave"},
+  {name:"Lithuania",flag:"🇱🇹",lat:40.749182,lng:-73.975903,addr:"600 Third Ave"},
+  {name:"Luxembourg",flag:"🇱🇺",lat:40.753119,lng:-73.964654,addr:"17 Beekman Place"},
+  {name:"Madagascar",flag:"🇲🇬",lat:40.750749,lng:-73.971055,addr:"820 Second Ave"},
+  {name:"Malawi",flag:"🇲🇼",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Malaysia",flag:"🇲🇾",lat:40.750363,lng:-73.971046,addr:"313 E 43rd St"},
+  {name:"Maldives",flag:"🇲🇻",lat:40.750399,lng:-73.972162,addr:"801 Second Ave"},
+  {name:"Mali",flag:"🇲🇱",lat:40.768951,lng:-73.964408,addr:"111 E 69th St"},
+  {name:"Malta",flag:"🇲🇹",lat:40.753703,lng:-73.970213,addr:"244 E 48th St"},
+  {name:"Marshall Islands",flag:"🇲🇭",lat:40.750062,lng:-73.971653,addr:"800 Second Ave"},
+  {name:"Mauritania",flag:"🇲🇷",lat:40.749093,lng:-73.978703,addr:"116 E 38th St"},
+  {name:"Mauritius",flag:"🇲🇺",lat:40.751410,lng:-73.973101,addr:"211 E 43rd St"},
+  {name:"Mexico",flag:"🇲🇽",lat:40.750608,lng:-73.969766,addr:"Two UN Plaza"},
+  {name:"Micronesia",flag:"🇫🇲",lat:40.749455,lng:-73.972075,addr:"300 E 42nd St"},
+  {name:"Monaco",flag:"🇲🇨",lat:40.752405,lng:-73.966030,addr:"866 UN Plaza"},
+  {name:"Mongolia",flag:"🇲🇳",lat:40.775232,lng:-73.964171,addr:"6 E 77th St"},
+  {name:"Montenegro",flag:"🇲🇪",lat:40.750399,lng:-73.972162,addr:"801 Second Ave"},
+  {name:"Morocco",flag:"🇲🇦",lat:40.752513,lng:-73.969919,addr:"866 Second Ave"},
+  {name:"Mozambique",flag:"🇲🇿",lat:40.753353,lng:-73.965471,addr:"420 E 50th St"},
+  {name:"Myanmar",flag:"🇲🇲",lat:40.775256,lng:-73.963952,addr:"10 E 77th St"},
+  {name:"Namibia",flag:"🇳🇦",lat:40.747909,lng:-73.978811,addr:"135 E 36th St"},
+  {name:"Nauru",flag:"🇳🇷",lat:40.750415,lng:-73.972139,addr:"801 Second Ave"},
+  {name:"Nepal",flag:"🇳🇵",lat:40.750816,lng:-73.971090,addr:"820 Second Ave"},
+  {name:"Netherlands",flag:"🇳🇱",lat:40.751273,lng:-73.974554,addr:"666 Third Ave"},
+  {name:"New Zealand",flag:"🇳🇿",lat:40.749306,lng:-73.975913,addr:"600 Third Ave"},
+  {name:"Nicaragua",flag:"🇳🇮",lat:40.750749,lng:-73.971055,addr:"820 Second Ave"},
+  {name:"Niger",flag:"🇳🇪",lat:40.753773,lng:-73.965340,addr:"417 E 50th St"},
+  {name:"Nigeria",flag:"🇳🇬",lat:40.751192,lng:-73.970819,addr:"828 Second Ave"},
+  {name:"North Macedonia",flag:"🇲🇰",lat:40.752405,lng:-73.966030,addr:"866 UN Plaza"},
+  {name:"Norway",flag:"🇳🇴",lat:40.753519,lng:-73.969971,addr:"885 Second Ave"},
+  {name:"Oman",flag:"🇴🇲",lat:40.752928,lng:-73.969108,addr:"305 E 47th St"},
+  {name:"Pakistan",flag:"🇵🇰",lat:40.767507,lng:-73.969653,addr:"8 E 65th St"},
+  {name:"Palau",flag:"🇵🇼",lat:40.753841,lng:-73.965616,addr:"866 UN Plaza"},
+  {name:"Panama",flag:"🇵🇦",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Papua New Guinea",flag:"🇵🇬",lat:40.750837,lng:-73.973971,addr:"201 E 42nd St"},
+  {name:"Paraguay",flag:"🇵🇾",lat:40.750399,lng:-73.972162,addr:"801 Second Ave"},
+  {name:"Peru",flag:"🇵🇪",lat:40.750749,lng:-73.971055,addr:"820 Second Ave"},
+  {name:"Philippines",flag:"🇵🇭",lat:40.755974,lng:-73.979484,addr:"556 Fifth Ave"},
+  {name:"Poland",flag:"🇵🇱",lat:40.752322,lng:-73.973062,addr:"711 Third Ave"},
+  {name:"Portugal",flag:"🇵🇹",lat:40.752497,lng:-73.970007,addr:"866 Second Ave"},
+  {name:"Qatar",flag:"🇶🇦",lat:40.751152,lng:-73.968540,addr:"809 UN Plaza"},
+  {name:"Republic of Korea",flag:"🇰🇷",lat:40.751205,lng:-73.968929,addr:"335 E 45th St"},
+  {name:"Republic of Moldova",flag:"🇲🇩",lat:40.744495,lng:-73.984341,addr:"35 E 29th St"},
+  {name:"Romania",flag:"🇷🇴",lat:40.747963,lng:-73.976063,addr:"573 Third Ave"},
+  {name:"Russian Federation",flag:"🇷🇺",lat:40.766661,lng:-73.963767,addr:"136 E 67th St"},
+  {name:"Rwanda",flag:"🇷🇼",lat:40.749582,lng:-73.978085,addr:"124 E 39th St"},
+  {name:"Saint Kitts & Nevis",flag:"🇰🇳",lat:40.750722,lng:-73.976883,addr:"370 Lexington Ave"},
+  {name:"Saint Lucia",flag:"🇱🇨",lat:40.750011,lng:-73.975406,addr:"630 Third Ave"},
+  {name:"Saint Vincent & Grenadines",flag:"🇻🇨",lat:40.750399,lng:-73.972162,addr:"801 Second Ave"},
+  {name:"Samoa",flag:"🇼🇸",lat:40.751491,lng:-73.973597,addr:"685 Third Ave"},
+  {name:"San Marino",flag:"🇸🇲",lat:40.754553,lng:-73.967297,addr:"327 E 50th St"},
+  {name:"Sao Tome & Principe",flag:"🇸🇹",lat:40.751545,lng:-73.973597,addr:"675 Third Ave"},
+  {name:"Saudi Arabia",flag:"🇸🇦",lat:40.751158,lng:-73.968512,addr:"809 UN Plaza"},
+  {name:"Senegal",flag:"🇸🇳",lat:40.751620,lng:-73.972114,addr:"229 E 44th St"},
+  {name:"Serbia",flag:"🇷🇸",lat:40.748039,lng:-73.982066,addr:"22 E 35th St"},
+  {name:"Seychelles",flag:"🇸🇨",lat:40.750076,lng:-73.971652,addr:"800 Second Ave"},
+  {name:"Sierra Leone",flag:"🇸🇱",lat:40.754671,lng:-73.969476,addr:"245 E 49th St"},
+  {name:"Singapore",flag:"🇸🇬",lat:40.753042,lng:-73.968571,addr:"318 E 48th St"},
+  {name:"Slovakia",flag:"🇸🇰",lat:40.750443,lng:-73.972057,addr:"801 Second Ave"},
+  {name:"Slovenia",flag:"🇸🇮",lat:40.749944,lng:-73.975339,addr:"630 Third Ave"},
+  {name:"Solomon Islands",flag:"🇸🇧",lat:40.750076,lng:-73.971652,addr:"800 Second Ave"},
+  {name:"Somalia",flag:"🇸🇴",lat:40.760530,lng:-73.959283,addr:"425 E 61st St"},
+  {name:"South Africa",flag:"🇿🇦",lat:40.755626,lng:-73.970583,addr:"333 E 38th St"},
+  {name:"South Sudan",flag:"🇸🇸",lat:40.750887,lng:-73.969138,addr:"336 E 45th St"},
+  {name:"Spain",flag:"🇪🇸",lat:40.753467,lng:-73.969939,addr:"885 Second Ave"},
+  {name:"Sri Lanka",flag:"🇱🇰",lat:40.750749,lng:-73.971055,addr:"820 Second Ave"},
+  {name:"Sudan",flag:"🇸🇩",lat:40.752915,lng:-73.969069,addr:"305 E 47th St"},
+  {name:"Suriname",flag:"🇸🇷",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Sweden",flag:"🇸🇪",lat:40.753545,lng:-73.970052,addr:"885 Second Ave"},
+  {name:"Switzerland",flag:"🇨🇭",lat:40.749632,lng:-73.974872,addr:"633 Third Ave"},
+  {name:"Syrian Arab Republic",flag:"🇸🇾",lat:40.750816,lng:-73.971090,addr:"820 Second Ave"},
+  {name:"Tajikistan",flag:"🇹🇯",lat:40.751915,lng:-73.971828,addr:"228 E 45th St"},
+  {name:"Thailand",flag:"🇹🇭",lat:40.755463,lng:-73.965525,addr:"351 E 52nd St"},
+  {name:"Timor-Leste",flag:"🇹🇱",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Togo",flag:"🇹🇬",lat:40.750270,lng:-73.977854,addr:"112 E 40th St"},
+  {name:"Tonga",flag:"🇹🇴",lat:40.754553,lng:-73.967297,addr:"250 E 51st St"},
+  {name:"Trinidad & Tobago",flag:"🇹🇹",lat:40.749671,lng:-73.974834,addr:"633 Third Ave"},
+  {name:"Tunisia",flag:"🇹🇳",lat:40.753573,lng:-73.964382,addr:"31 Beekman Place"},
+  {name:"Turkey",flag:"🇹🇷",lat:40.751365,lng:-73.968403,addr:"821 UN Plaza"},
+  {name:"Turkmenistan",flag:"🇹🇲",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Tuvalu",flag:"🇹🇻",lat:40.750076,lng:-73.971652,addr:"800 Second Ave"},
+  {name:"Uganda",flag:"🇺🇬",lat:40.750887,lng:-73.969138,addr:"336 E 45th St"},
+  {name:"Ukraine",flag:"🇺🇦",lat:40.755955,lng:-73.969658,addr:"220 E 51st St"},
+  {name:"United Arab Emirates",flag:"🇦🇪",lat:40.752183,lng:-73.969302,addr:"315 E 46th St"},
+  {name:"United Kingdom",flag:"🇬🇧",lat:40.753490,lng:-73.970055,addr:"885 Second Ave"},
+  {name:"United Rep. of Tanzania",flag:"🇹🇿",lat:40.756656,lng:-73.966479,addr:"307 E 53rd St"},
+  {name:"United States",flag:"🇺🇸",lat:40.750667,lng:-73.968902,addr:"799 UN Plaza"},
+  {name:"Uruguay",flag:"🇺🇾",lat:40.749769,lng:-73.974935,addr:"633 Third Ave"},
+  {name:"Uzbekistan",flag:"🇺🇿",lat:40.750027,lng:-73.975401,addr:"630 Third Ave"},
+  {name:"Vanuatu",flag:"🇻🇺",lat:40.750076,lng:-73.971652,addr:"800 Second Ave"},
+  {name:"Venezuela",flag:"🇻🇪",lat:40.751960,lng:-73.968696,addr:"335 E 46th St"},
+  {name:"Viet Nam",flag:"🇻🇳",lat:40.752548,lng:-73.966256,addr:"866 UN Plaza"},
+  {name:"Yemen",flag:"🇾🇪",lat:40.754341,lng:-73.965575,addr:"413 E 51st St"},
+  {name:"Zambia",flag:"🇿🇲",lat:40.756637,lng:-73.968396,addr:"237 E 52nd St"},
+  {name:"Zimbabwe",flag:"🇿🇼",lat:40.751915,lng:-73.971826,addr:"228 E 45th St"},
+  {name:"Holy See",flag:"⛪",lat:40.750866,lng:-73.979967,addr:"25 E 39th St"},
+  {name:"State of Palestine",flag:"🇵🇸",lat:40.766549,lng:-73.966254,addr:"115 E 65th St"},
+];
+
+// ── STATE ──
+const visited = new Set(JSON.parse(localStorage.getItem('un-visited') || '[]'));
+let plan = null;
+let curDay = 0;
+let markers = {};      // name -> leaflet marker
+let routeLine = null;
+let locMarker = null;
+let locWatcher = null;
+let locActive = false;
+let userLat = null, userLng = null;
+
+// ── MAP INIT ──
+const map = L.map('map', { center: [40.7527, -73.9700], zoom: 14, zoomControl: true });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 19
+}).addTo(map);
+
+// Custom marker icon factory
+function makeIcon(visited, isNext) {
+  const color = visited ? '#48BB78' : isNext ? '#F6C90E' : '#63B3ED';
+  const size = isNext ? 14 : 10;
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(0,0,0,0.4);box-shadow:0 0 6px ${color}66"></div>`,
+    className: '',
+    iconAnchor: [size/2, size/2],
+    iconSize: [size, size],
+  });
+}
+
+// ── HELPERS ──
+function dist(a,b){
+  const R=6371000,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180;
+  const la=a.lat*Math.PI/180,lb=b.lat*Math.PI/180;
+  return 2*R*Math.asin(Math.sqrt(Math.sin(dLat/2)**2+Math.cos(la)*Math.cos(lb)*Math.sin(dLng/2)**2));
+}
+function toMiles(m){return(m/1609.34).toFixed(2);}
+function toMin(m){return Math.round(m/80);}
+function saveVisited(){localStorage.setItem('un-visited',JSON.stringify([...visited]));}
+
+// ── TSP ──
+function nnTSP(missions, startPt) {
+  const n=missions.length, vis=new Array(n).fill(false);
+  let startIdx=0, minD=Infinity;
+  missions.forEach((m,i)=>{const d=dist(startPt,m);if(d<minD){minD=d;startIdx=i;}});
+  const tour=[startIdx]; vis[startIdx]=true;
+  for(let i=1;i<n;i++){
+    const last=tour[tour.length-1];
+    let best=Infinity,bestI=-1;
+    missions.forEach((m,j)=>{if(!vis[j]){const d=dist(missions[last],m);if(d<best){best=d;bestI=j;}}});
+    vis[bestI]=true; tour.push(bestI);
+  }
+  return tour.map(i=>missions[i]);
+}
+function twoOpt(tour){
+  let improved=true;
+  while(improved){
+    improved=false;
+    for(let i=1;i<tour.length-1;i++){
+      for(let j=i+1;j<tour.length;j++){
+        const d1=dist(tour[i-1],tour[i])+dist(tour[j],tour[(j+1)%tour.length]);
+        const d2=dist(tour[i-1],tour[j])+dist(tour[i],tour[(j+1)%tour.length]);
+        if(d2<d1-0.5){tour.splice(i,j-i+1,...tour.slice(i,j+1).reverse());improved=true;}
+      }
+    }
+  }
+  return tour;
+}
+function geoSort(ms){
+  return [...ms].sort((a,b)=>{
+    const ar=Math.round(a.lat/0.003),br=Math.round(b.lat/0.003);
+    return ar!==br?br-ar:a.lng-b.lng;
+  });
+}
+function streetSort(ms){
+  return [...ms].sort((a,b)=>{
+    const ab=Math.round((a.lat-40.74)/0.0009),bb=Math.round((b.lat-40.74)/0.0009);
+    return ab!==bb?ab-bb:(ab%2===0?a.lng-b.lng:b.lng-a.lng);
+  });
+}
+
+function setStatus(msg,active=false){
+  const el=document.getElementById('status');
+  el.innerHTML=active?`<div class="pulse"></div><span>${msg}</span>`:`<span style="color:var(--text-dim)">${msg}</span>`;
+}
+
+// ── GENERATE ──
+async function generate(){
+  const btn=document.getElementById('genBtn');
+  btn.disabled=true;
+  clearMapLayers();
+  setStatus('Building route…',true);
+  await new Promise(r=>setTimeout(r,30));
+
+  const perDay=parseInt(document.getElementById('perDay').value);
+  const strategy=document.getElementById('strategy').value;
+  const startPt = (userLat&&userLng) ? {lat:userLat,lng:userLng} : {lat:40.7489,lng:-73.9682};
+
+  let ordered;
+  if(strategy==='tsp'){
+    ordered=nnTSP(MISSIONS,startPt);
+    setStatus('Running 2-opt…',true);
+    await new Promise(r=>setTimeout(r,20));
+    twoOpt(ordered);
+  } else if(strategy==='geo'){
+    ordered=geoSort(MISSIONS);
+  } else {
+    ordered=streetSort(MISSIONS);
+  }
+
+  // Compute legs
+  const legs=[];
+  let totalDist=0;
+  for(let i=0;i<ordered.length-1;i++){
+    const d=dist(ordered[i],ordered[i+1]);
+    legs.push(d); totalDist+=d;
+  }
+
+  // Split into days
+  const days=[];
+  for(let i=0;i<ordered.length;i+=perDay){
+    const slice=ordered.slice(i,i+perDay);
+    const sliceLegs=legs.slice(i,i+perDay-1);
+    days.push({missions:slice,legs:sliceLegs,dist:sliceLegs.reduce((a,b)=>a+b,0)});
+  }
+  plan={days,ordered,legs,totalDist};
+
+  // Header stats
+  document.getElementById('s-days').textContent=days.length;
+  document.getElementById('s-total').textContent=toMiles(totalDist);
+  updateVisitedStats();
+
+  // Day tabs
+  const tabsEl=document.getElementById('dayTabs');
+  tabsEl.innerHTML='';
+  days.forEach((_,i)=>{
+    const t=document.createElement('button');
+    t.className='day-tab'+(i===0?' active':'');
+    t.textContent=`Day ${i+1}`;
+    t.onclick=()=>switchDay(i);
+    tabsEl.appendChild(t);
+  });
+
+  // Place all markers
+  placeAllMarkers(ordered);
+
+  curDay=0;
+  renderDay(0);
+  drawRouteForDay(0);
+
+  document.getElementById('progressBar').style.display='flex';
+  updateProgress();
+
+  setStatus(`Done — ${days.length} days, ${toMiles(totalDist)} miles. Click any marker or row to mark visited.`);
+  btn.disabled=false;
+}
+
+function clearMapLayers(){
+  Object.values(markers).forEach(m=>map.removeLayer(m));
+  markers={};
+  if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+}
+
+function placeAllMarkers(ordered){
+  ordered.forEach(m=>{
+    const isVisited=visited.has(m.name);
+    const marker=L.marker([m.lat,m.lng],{icon:makeIcon(isVisited,false)}).addTo(map);
+    marker.bindPopup(buildPopup(m));
+    markers[m.name]=marker;
+  });
+}
+
+function buildPopup(m){
+  const isVisited=visited.has(m.name);
+  const div=document.createElement('div');
+  div.innerHTML=`
+    <div class="popup-flag">${m.flag}</div>
+    <div class="popup-name">${m.name}</div>
+    <div class="popup-addr">${m.addr}, New York</div>
+    <button class="popup-btn ${isVisited?'visited':''}" onclick="toggleVisitedFromMap('${m.name}',this)">
+      ${isVisited?'✓ Visited':'Mark as Visited'}
+    </button>
+  `;
+  return div;
+}
+
+function toggleVisitedFromMap(name,btn){
+  if(visited.has(name)){visited.delete(name);} else {visited.add(name);}
+  saveVisited();
+  const isV=visited.has(name);
+  btn.textContent=isV?'✓ Visited':'Mark as Visited';
+  btn.className='popup-btn'+(isV?' visited':'');
+  refreshMarker(name);
+  updateVisitedStats();
+  updateProgress();
+  if(plan) renderDay(curDay);
+}
+
+function refreshMarker(name){
+  const m=MISSIONS.find(x=>x.name===name);
+  if(!m||!markers[name]) return;
+  const isV=visited.has(name);
+  markers[name].setIcon(makeIcon(isV,false));
+}
+
+function toggleVisitedFromRow(name){
+  if(visited.has(name)){visited.delete(name);}else{visited.add(name);}
+  saveVisited();
+  refreshMarker(name);
+  updateVisitedStats();
+  updateProgress();
+  renderDay(curDay);
+  // Refresh popup if open
+  if(markers[name]&&markers[name].isPopupOpen()){
+    markers[name].setPopupContent(buildPopup(MISSIONS.find(m=>m.name===name)));
+  }
+}
+
+function drawRouteForDay(idx){
+  if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+  if(!plan) return;
+  const {missions}=plan.days[idx];
+  const coords=missions.map(m=>[m.lat,m.lng]);
+  routeLine=L.polyline(coords,{color:'#63B3ED',weight:1.5,opacity:0.5,dashArray:'4 6'}).addTo(map);
+
+  // Highlight next unvisited
+  let highlightedNext=false;
+  missions.forEach(m=>{
+    if(!visited.has(m.name)&&!highlightedNext){
+      highlightedNext=true;
+      markers[m.name]&&markers[m.name].setIcon(makeIcon(false,true));
+    } else {
+      markers[m.name]&&markers[m.name].setIcon(makeIcon(visited.has(m.name),false));
+    }
+  });
+
+  // Pan map to day's bounds
+  if(coords.length>0){
+    try{ map.fitBounds(L.latLngBounds(coords),{padding:[30,30],maxZoom:15}); }catch(e){}
+  }
+}
+
+function switchDay(i){
+  curDay=i;
+  document.querySelectorAll('.day-tab').forEach((t,j)=>t.classList.toggle('active',i===j));
+  renderDay(i);
+  drawRouteForDay(i);
+}
+
+function renderDay(idx){
+  const {missions,legs,dist:dayDist}=plan.days[idx];
+  const list=document.getElementById('missionList');
+  list.innerHTML='';
+
+  // Day summary
+  const summary=document.createElement('div');
+  summary.className='day-summary';
+  const totalMin=toMin(dayDist);
+  const dayVisited=missions.filter(m=>visited.has(m.name)).length;
+  summary.innerHTML=`
+    <span>${missions.length} missions</span>
+    <span>${toMiles(dayDist)} mi</span>
+    <span>~${totalMin>=60?`${Math.floor(totalMin/60)}h ${totalMin%60}m`:totalMin+'m'} walking</span>
+    <span style="color:var(--green)">${dayVisited} visited</span>
+  `;
+  list.appendChild(summary);
+
+  missions.forEach((m,i)=>{
+    const isVisited=visited.has(m.name);
+    const walkDist=i>0?legs[i-1]:null;
+    const walkMin=walkDist?toMin(walkDist):null;
+    let walkClass='walk-near';
+    if(walkMin!==null){walkClass=walkMin>10?'walk-far':walkMin>5?'walk-mid':'walk-near';}
+
+    const row=document.createElement('div');
+    row.className='mission-row'+(isVisited?' visited':'');
+    row.style.animationDelay=`${i*12}ms`;
+    row.onclick=()=>{
+      toggleVisitedFromRow(m.name);
+      // fly to on map
+      map.flyTo([m.lat,m.lng],16,{duration:0.8});
+      markers[m.name]&&markers[m.name].openPopup();
+    };
+
+    row.innerHTML=`
+      <div class="row-num">${isVisited?'✓':i+1}</div>
+      <div class="row-body">
+        <div class="row-country">${m.flag} ${m.name}</div>
+        <div class="row-addr">${m.addr}</div>
+      </div>
+      <div class="row-right">
+        ${walkDist!==null?`<span class="walk-badge ${walkClass}">${walkMin}m walk</span>`:'<span class="walk-badge walk-near">start</span>'}
+        <input type="checkbox" class="visit-check" ${isVisited?'checked':''} onclick="event.stopPropagation();toggleVisitedFromRow('${m.name}')">
+      </div>
+    `;
+    list.appendChild(row);
+
+    if(i<missions.length-1){
+      const sep=document.createElement('div');
+      sep.className='walk-sep';
+      const nm=toMin(legs[i]);
+      const col=nm>10?'var(--red)':nm>5?'var(--gold)':'var(--green)';
+      sep.innerHTML=`<div class="line"></div><span style="color:${col}">${nm} min →</span><div class="line"></div>`;
+      list.appendChild(sep);
+    }
+  });
+}
+
+function updateVisitedStats(){
+  const v=visited.size;
+  const r=195-v;
+  document.getElementById('s-visited').textContent=v;
+  document.getElementById('s-remain').textContent=r;
+}
+
+function updateProgress(){
+  const v=visited.size;
+  const pct=(v/195*100).toFixed(1);
+  document.getElementById('progressFill').style.width=pct+'%';
+  document.getElementById('progressText').textContent=v;
+}
+
+function clearVisited(){
+  visited.clear(); saveVisited();
+  Object.keys(markers).forEach(name=>markers[name]&&markers[name].setIcon(makeIcon(false,false)));
+  updateVisitedStats(); updateProgress();
+  if(plan) renderDay(curDay);
+}
+
+// ── GEOLOCATION ──
+function toggleLocation(){
+  if(locActive){stopLocation();}else{startLocation();}
+}
+
+function startLocation(){
+  if(!navigator.geolocation){
+    setStatus('Geolocation not supported by this browser');
+    return;
+  }
+  // Check if we're on a secure context (required for geolocation in most browsers)
+  if(window.isSecureContext === false){
+    setStatus('Location requires HTTPS — open this file via a local server or hosted URL');
+    return;
+  }
+  const btn=document.getElementById('locBtn');
+  btn.classList.add('active');
+  document.getElementById('locLabel').textContent='Locating…';
+  locWatcher=navigator.geolocation.watchPosition(
+    pos=>{
+      userLat=pos.coords.latitude;
+      userLng=pos.coords.longitude;
+      locActive=true;
+      document.getElementById('locLabel').textContent='Live Location';
+      if(locMarker){map.removeLayer(locMarker);}
+      locMarker=L.marker([userLat,userLng],{
+        icon:L.divIcon({
+          html:'<div class="loc-pulse"></div>',
+          className:'',iconAnchor:[8,8],iconSize:[16,16]
+        }),
+        zIndexOffset:1000
+      }).addTo(map).bindPopup('You are here');
+    },
+    err=>{
+      console.warn(err);
+      stopLocation();
+      const msgs = {
+        1: 'Location blocked — allow access in browser settings',
+        2: 'Location unavailable — check your connection',
+        3: 'Location timed out — try again',
+      };
+      setStatus(msgs[err.code] || 'Location error — geolocation unavailable');
+    },
+    {enableHighAccuracy:true,maximumAge:5000}
+  );
+}
+
+function stopLocation(){
+  if(locWatcher!==null){navigator.geolocation.clearWatch(locWatcher);locWatcher=null;}
+  if(locMarker){map.removeLayer(locMarker);locMarker=null;}
+  locActive=false; userLat=null; userLng=null;
+  const btn=document.getElementById('locBtn');
+  btn.classList.remove('active');
+  document.getElementById('locLabel').textContent='My Location';
+}
+
+// ── EXPORT ──
+function exportTour(){
+  if(!plan){alert('Generate a plan first.');return;}
+  let out='UN MISSION WALKING TOUR\n'+'='.repeat(50)+'\n\n';
+  plan.days.forEach((day,i)=>{
+    out+=`DAY ${i+1} — ${day.missions.length} missions, ${toMiles(day.dist)} miles\n`;
+    out+='-'.repeat(40)+'\n';
+    day.missions.forEach((m,j)=>{
+      const isV=visited.has(m.name);
+      out+=`  ${j+1}. ${m.flag} ${m.name}${isV?' [VISITED]':''}\n`;
+      out+=`     ${m.addr}, New York\n`;
+      if(j<day.legs.length) out+=`     ↓ ${toMin(day.legs[j])} min walk\n`;
+    });
+    out+='\n';
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([out],{type:'text/plain'}));
+  a.download='un_tour.txt';
+  a.click();
+}
+
+// Init visited stats on load
+updateVisitedStats();
+updateProgress();
+</script>
+</body>
+</html>
