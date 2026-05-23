@@ -624,7 +624,7 @@ async function generate(){
 
   curDay=0;
   renderDay(0);
-  drawRouteForDay(0);
+  await drawRouteForDay(0);
 
   document.getElementById('progressBar').style.display='flex';
   updateProgress();
@@ -694,12 +694,33 @@ function toggleVisitedFromRow(name){
   }
 }
 
-function drawRouteForDay(idx){
+async function drawRouteForDay(idx){
   if(routeLine){map.removeLayer(routeLine);routeLine=null;}
   if(!plan) return;
   const {missions}=plan.days[idx];
-  const coords=missions.map(m=>[m.lat,m.lng]);
-  routeLine=L.polyline(coords,{color:'#63B3ED',weight:1.5,opacity:0.5,dashArray:'4 6'}).addTo(map);
+
+  // Fetch street routes from OSRM and combine them
+  let allCoords=[];
+  for(let i=0;i<missions.length-1;i++){
+    const from=missions[i];
+    const to=missions[i+1];
+    try{
+      const url=`https://router.project-osrm.org/route/v1/foot/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+      const res=await fetch(url);
+      const data=await res.json();
+      if(data.routes&&data.routes[0]){
+        const coords=data.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+        if(i===0){allCoords=[...coords];}else{allCoords=[...allCoords.slice(0,-1),...coords];}
+      }
+    }catch(e){
+      console.warn('OSRM routing failed for leg',i,e);
+      allCoords.push([from.lat,from.lng],[to.lat,to.lng]);
+    }
+  }
+
+  if(allCoords.length>0){
+    routeLine=L.polyline(allCoords,{color:'#63B3ED',weight:1.5,opacity:0.5,dashArray:'4 6'}).addTo(map);
+  }
 
   // Highlight next unvisited
   let highlightedNext=false;
@@ -713,16 +734,17 @@ function drawRouteForDay(idx){
   });
 
   // Pan map to day's bounds
+  const coords=missions.map(m=>[m.lat,m.lng]);
   if(coords.length>0){
     try{ map.fitBounds(L.latLngBounds(coords),{padding:[30,30],maxZoom:15}); }catch(e){}
   }
 }
 
-function switchDay(i){
+async function switchDay(i){
   curDay=i;
   document.querySelectorAll('.day-tab').forEach((t,j)=>t.classList.toggle('active',i===j));
   renderDay(i);
-  drawRouteForDay(i);
+  await drawRouteForDay(i);
 }
 
 function renderDay(idx){
