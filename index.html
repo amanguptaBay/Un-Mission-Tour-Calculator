@@ -571,16 +571,19 @@ async function generate(){
   const strategy=document.getElementById('strategy').value;
   const startPt = (userLat&&userLng) ? {lat:userLat,lng:userLng} : {lat:40.7489,lng:-73.9682};
 
+  // Filter out visited missions
+  const unvisited=MISSIONS.filter(m=>!visited.has(m.name));
+
   let ordered;
   if(strategy==='tsp'){
-    ordered=nnTSP(MISSIONS,startPt);
+    ordered=nnTSP(unvisited,startPt);
     setStatus('Running 2-opt…',true);
     await new Promise(r=>setTimeout(r,20));
     twoOpt(ordered);
   } else if(strategy==='geo'){
-    ordered=geoSort(MISSIONS);
+    ordered=geoSort(unvisited);
   } else {
-    ordered=streetSort(MISSIONS);
+    ordered=streetSort(unvisited);
   }
 
   // Compute legs
@@ -616,8 +619,8 @@ async function generate(){
     tabsEl.appendChild(t);
   });
 
-  // Place all markers
-  placeAllMarkers(ordered);
+  // Place all markers (including visited)
+  placeAllMarkers(MISSIONS);
 
   curDay=0;
   renderDay(0);
