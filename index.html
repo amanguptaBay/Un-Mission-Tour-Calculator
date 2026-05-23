@@ -559,26 +559,6 @@ function setStatus(msg,active=false){
   el.innerHTML=active?`<div class="pulse"></div><span>${msg}</span>`:`<span style="color:var(--text-dim)">${msg}</span>`;
 }
 
-// ── OSRM ROUTING ──
-async function getOSRMRoute(from, to) {
-  try {
-    const url = `https://router.project-osrm.org/route/v1/foot/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.routes && data.routes[0]) {
-      const route = data.routes[0];
-      return {
-        distance: route.distance,
-        duration: route.duration,
-        geometry: route.geometry.coordinates.map(c => [c[1], c[0]])
-      };
-    }
-  } catch (e) {
-    console.warn('OSRM route failed:', e);
-  }
-  return null;
-}
-
 // ── GENERATE ──
 async function generate(){
   const btn=document.getElementById('genBtn');
@@ -606,23 +586,12 @@ async function generate(){
     ordered=streetSort(unvisited);
   }
 
-  // Compute legs with OSRM street distances
+  // Compute legs
   const legs=[];
-  const routes=[];
   let totalDist=0;
-  setStatus('Calculating street distances…',true);
   for(let i=0;i<ordered.length-1;i++){
-    const route=await getOSRMRoute(ordered[i],ordered[i+1]);
-    if(route){
-      legs.push(route.distance);
-      routes.push(route);
-      totalDist+=route.distance;
-    }else{
-      const d=dist(ordered[i],ordered[i+1]);
-      legs.push(d);
-      routes.push(null);
-      totalDist+=d;
-    }
+    const d=dist(ordered[i],ordered[i+1]);
+    legs.push(d); totalDist+=d;
   }
 
   // Split into days
@@ -630,10 +599,9 @@ async function generate(){
   for(let i=0;i<ordered.length;i+=perDay){
     const slice=ordered.slice(i,i+perDay);
     const sliceLegs=legs.slice(i,i+perDay-1);
-    const sliceRoutes=routes.slice(i,i+perDay-1);
-    days.push({missions:slice,legs:sliceLegs,routes:sliceRoutes,dist:sliceLegs.reduce((a,b)=>a+b,0)});
+    days.push({missions:slice,legs:sliceLegs,dist:sliceLegs.reduce((a,b)=>a+b,0)});
   }
-  plan={days,ordered,legs,routes,totalDist};
+  plan={days,ordered,legs,totalDist};
 
   // Header stats
   document.getElementById('s-days').textContent=days.length;
@@ -656,7 +624,7 @@ async function generate(){
 
   curDay=0;
   renderDay(0);
-  await drawRouteForDay(0);
+  drawRouteForDay(0);
 
   document.getElementById('progressBar').style.display='flex';
   updateProgress();
@@ -726,27 +694,12 @@ function toggleVisitedFromRow(name){
   }
 }
 
-async function drawRouteForDay(idx){
+function drawRouteForDay(idx){
   if(routeLine){map.removeLayer(routeLine);routeLine=null;}
   if(!plan) return;
-  const {missions,routes}=plan.days[idx];
-
-  // Combine pre-calculated route geometries
-  let allCoords=[];
-  for(let i=0;i<routes.length;i++){
-    const route=routes[i];
-    if(route){
-      if(i===0){allCoords=[...route.geometry];}else{allCoords=[...allCoords.slice(0,-1),...route.geometry];}
-    }else{
-      const from=missions[i];
-      const to=missions[i+1];
-      allCoords.push([from.lat,from.lng],[to.lat,to.lng]);
-    }
-  }
-
-  if(allCoords.length>0){
-    routeLine=L.polyline(allCoords,{color:'#63B3ED',weight:1.5,opacity:0.5,dashArray:'4 6'}).addTo(map);
-  }
+  const {missions}=plan.days[idx];
+  const coords=missions.map(m=>[m.lat,m.lng]);
+  routeLine=L.polyline(coords,{color:'#63B3ED',weight:1.5,opacity:0.5,dashArray:'4 6'}).addTo(map);
 
   // Highlight next unvisited
   let highlightedNext=false;
@@ -760,17 +713,16 @@ async function drawRouteForDay(idx){
   });
 
   // Pan map to day's bounds
-  const coords=missions.map(m=>[m.lat,m.lng]);
   if(coords.length>0){
     try{ map.fitBounds(L.latLngBounds(coords),{padding:[30,30],maxZoom:15}); }catch(e){}
   }
 }
 
-async function switchDay(i){
+function switchDay(i){
   curDay=i;
   document.querySelectorAll('.day-tab').forEach((t,j)=>t.classList.toggle('active',i===j));
   renderDay(i);
-  await drawRouteForDay(i);
+  drawRouteForDay(i);
 }
 
 function renderDay(idx){
