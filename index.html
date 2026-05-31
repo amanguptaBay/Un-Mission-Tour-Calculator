@@ -58,10 +58,10 @@
   .hstat-val.green { color: var(--green); }
 
   .header-controls { display: flex; align-items: center; gap: 8px; padding: 0 0 0 18px; border-left: 1px solid var(--border); margin-left: auto; }
-  select, button { font-family: var(--mono); font-size: 11px; border-radius: 3px; outline: none; cursor: pointer; }
-  select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; }
+  select, button { font-family: var(--mono); font-size: 11px; border-radius: 3px; outline: none; cursor: pointer; min-height: 36px; }
+  select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; }
   select option { background: var(--card); }
-  .btn-gen { background: var(--accent); color: #0B0F1A; border: none; padding: 8px 16px; letter-spacing: 1px; text-transform: uppercase; transition: background 0.15s; }
+  .btn-gen { background: var(--accent); color: #0B0F1A; border: none; padding: 10px 18px; letter-spacing: 1px; text-transform: uppercase; transition: background 0.15s; }
   .btn-gen:hover { background: #90CDF4; }
   .btn-gen:disabled { background: var(--text-dim); cursor: not-allowed; }
   .btn-loc { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 7px 12px; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
@@ -123,6 +123,7 @@
     border-bottom: 1px solid rgba(99,179,237,0.06);
     transition: background 0.15s; cursor: pointer;
     animation: slideIn 0.25s ease both;
+    min-height: 56px;
   }
   @keyframes slideIn { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:none; } }
   .mission-row:hover { background: rgba(99,179,237,0.05); }
@@ -204,11 +205,40 @@
   .progress-label span { color: var(--green); }
 
   /* Responsive */
-  @media (max-width: 800px) {
-    .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
-    .panel { grid-column: 1; grid-row: 3; position: relative; top: 0; height: 50vh; }
-    .map-panel { grid-column: 1; grid-row: 2; position: relative; top: 0; height: 40vh; }
+  @media (max-width: 1024px) {
     .header-stats { display: none; }
+  }
+
+  @media (max-width: 768px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+    .panel { grid-column: 1; grid-row: 3; position: relative; top: 0; height: 45vh; border-right: none; border-top: 1px solid var(--border); }
+    .map-panel { grid-column: 1; grid-row: 2; position: relative; top: 0; height: 45vh; }
+    .header-controls { flex-wrap: wrap; gap: 6px; padding: 0 0 0 12px; }
+    select, button { font-size: 12px; padding: 8px 12px; min-height: 40px; }
+    .btn-gen { padding: 10px 14px; }
+    .btn-loc, .btn-sec { padding: 8px 12px; }
+  }
+
+  @media (max-width: 480px) {
+    .app { grid-template-rows: auto auto 1fr; }
+    .panel { height: 40vh; }
+    .map-panel { height: 50vh; }
+    header { flex-direction: column; padding: 0; }
+    .header-title { padding: 12px 16px; border-right: none; border-bottom: 1px solid var(--border); }
+    h1 { font-size: 16px; }
+    .header-eyebrow { font-size: 8px; }
+    .header-controls { width: 100%; padding: 12px 16px; border: none; margin-left: 0; border-top: 1px solid var(--border); gap: 8px; }
+    select { padding: 10px; flex: 1; min-height: 44px; font-size: 13px; }
+    button { min-height: 44px; font-size: 13px; }
+    .btn-gen { flex: 1; }
+    .btn-loc { flex: 1; }
+    .btn-sec { flex: 0.5; }
+    .row-num { font-size: 9px; width: 32px; }
+    .row-country { font-size: 12px; }
+    .row-addr { font-size: 9px; }
+    .walk-badge { font-size: 8px; padding: 2px 6px; }
+    .visit-check { width: 16px; height: 16px; }
+    .day-summary { font-size: 9px; padding: 8px 12px; gap: 8px; }
   }
 </style>
 </head>
